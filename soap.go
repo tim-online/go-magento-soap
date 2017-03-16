@@ -3,7 +3,6 @@ package magento
 import (
 	"encoding/xml"
 	"net/url"
-	"time"
 )
 
 func NewRequest() *Request {
@@ -56,12 +55,6 @@ func (r *Response) WithData(data interface{}) *Response {
 
 func NewEnvelope() *Envelope {
 	return &Envelope{
-		Xsi: "http://www.w3.org/2001/XMLSchema-instance",
-		Xsd: "http://www.w3.org/2001/XMLSchema",
-		// SoapEnv: "http://schemas.xmlsoap.org/soap/envelope/",
-		Urn:     "urn:Magento",
-		Soapenc: "http://schemas.xmlsoap.org/soap/encoding/",
-
 		Header: NewHeader(),
 		Body:   NewBody(),
 	}
@@ -70,15 +63,9 @@ func NewEnvelope() *Envelope {
 // http://stackoverflow.com/questions/16202170/marshalling-xml-go-xmlname-xmlns
 type Envelope struct {
 	XMLName xml.Name `xml:"http://schemas.xmlsoap.org/soap/envelope/ Envelope"`
-	Xsi     string   `xml:"xmlns:xsi,attr"`
-	Xsd     string   `xml:"xmlns:xsd,attr"`
-	// SoapEnv string   `xml:"xmlns:SOAP-ENV,attr"`
-	Urn     string `xml:"xmlns:urn,attr"`
-	Soapenc string `xml:"xmlns:soapenc,attr"`
 
 	Header *Header `xml:"Header"`
 	Body   *Body   `xml:"Body"`
-	Test   string  `xml:"test"`
 }
 
 func NewHeader() *Header {
@@ -100,22 +87,4 @@ type Body struct {
 
 func NewBody() *Body {
 	return &Body{}
-}
-
-func NewSessionID(value string) *SessionID {
-	return &SessionID{
-		token:  value,
-		Expiry: time.Now(),
-	}
-}
-
-type SessionID struct {
-	XMLName xml.Name `xml:"sessionId"`
-
-	token  string    `xml:"-"`
-	Expiry time.Time `xml:-`
-}
-
-func (s *SessionID) MarshalXML(e *xml.Encoder, start xml.StartElement) error {
-	return e.EncodeElement(s.token, start)
 }

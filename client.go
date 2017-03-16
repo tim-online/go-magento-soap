@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"time"
 )
 
 const (
@@ -17,6 +18,7 @@ const (
 	mediaType      = "text/xml"
 	charset        = "utf-8"
 	xmlns          = "https://api.nmbrs.nl/soap/v2.1/EmployeeService"
+	sessionTimeout = 3600 * time.Second
 )
 
 // Client manages communication with Unit4 Multivers API
@@ -27,24 +29,32 @@ type Client struct {
 	// Url pointing to base Unit4 Multivers API
 	Endpoint *url.URL
 
+	// Credentials
+	apiUser string
+	apiKey  string
+
 	// Debugging flag
 	Debug bool
 
 	// User agent for client
 	UserAgent string
 
+	// Holds current session
+	session *Session
+
 	// Optional function called after every successful request made to the DO APIs
 	onRequestCompleted RequestCompletionCallback
 
 	// Services
 	CatalogProduct *CatalogProductService
+	Session        *SessionService
 }
 
 // RequestCompletionCallback defines the type of the request callback function
 type RequestCompletionCallback func(*http.Request, *http.Response)
 
 // NewClient returns a new Unit4 Multivers API client
-func NewClient(httpClient *http.Client, baseURL *url.URL) *Client {
+func NewClient(httpClient *http.Client, baseURL *url.URL, apiUser string, apiKey string) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
@@ -57,9 +67,12 @@ func NewClient(httpClient *http.Client, baseURL *url.URL) *Client {
 	}
 
 	c.SetEndpoint(baseURL)
+	c.SetApiUser(apiUser)
+	c.SetApiKey(apiKey)
 
 	// Services
 	c.CatalogProduct = NewCatalogProductService(c)
+	c.Session = NewSessionService(c)
 
 	return c
 }
@@ -165,9 +178,56 @@ func (c *Client) Do(req *http.Request, responseBody *Response) (*http.Response, 
 
 	// try to decode body into interface parameter
 	err = xml.NewDecoder(httpResp.Body).Decode(responseBody.Envelope)
-	return httpResp, err
+	if err != nil {
+		errorResponse := &ErrorResponse{Response: httpResp}
+		errorResponse.Message = err.Error()
+		return httpResp, errorResponse
+	}
+
+	return httpResp, nil
 }
 
-func (c *Client) GetSessionID() *SessionID {
-	return NewSessionID("3c0d9d7cd3ec19f39666132c4a764264")
+func (c *Client) ApiUser() string {
+	return c.apiUser
+}
+
+func (c *Client) SetApiUser(apiUser string) {
+	c.apiUser = apiUser
+}
+
+func (c *Client) ApiKey() string {
+	return c.apiKey
+}
+
+func (c *Client) SetApiKey(apiKey string) {
+	c.apiKey = apiKey
+}
+
+func (c *Client) GetSession() *Session {
+	if c.session == nil {
+		c.session = c.Login()
+	}
+
+	if c.session.IsExpired() {
+		c.session = c.Login()
+	}
+
+	return c.session
+}
+
+func (c *Client) Login() *Session {
+	now := time.Now()
+	request := NewLoginRequest().
+		WithApiUser(c.ApiUser()).
+		WithApiKey(c.ApiKey())
+
+	resp, err := c.Session.Login(request, nil)
+	if err != nil {
+		panic(err)
+	}
+
+	return &Session{
+		token:  resp.LoginReturn,
+		expiry: now.Add(sessionTimeout),
+	}
 }
